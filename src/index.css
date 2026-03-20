@@ -1,0 +1,97 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --shadow-luxury: 0 10px 40px -10px rgba(0, 0, 0, 0.08);
+  --shadow-luxury-hover: 0 20px 50px -12px rgba(0, 0, 0, 0.12);
+}
+
+@layer base {
+  body {
+    @apply bg-[#F8FAFC] text-slate-900 font-sans antialiased transition-colors duration-300;
+  }
+  
+  .dark body {
+    @apply bg-black text-white;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display tracking-tight;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-white/80 backdrop-blur-md border border-white/20;
+  }
+  
+  .dark .glass {
+    @apply bg-black/80 border-white/10;
+  }
+  
+  .gradient-primary {
+    @apply bg-gradient-to-br from-indigo-600 to-violet-700;
+  }
+  
+  .dark .gradient-primary {
+    @apply bg-gradient-to-br from-amber-400 to-yellow-500;
+  }
+  
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-violet-600;
+  }
+  
+  .dark .text-gradient {
+    @apply bg-gradient-to-r from-amber-400 to-yellow-200;
+  }
+}
+
+/* Print Styles */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #print-area, #print-area * {
+    visibility: visible;
+  }
+  #print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+  .no-print {
+    display: none !important;
+  }
+  
+  /* Label Sizes */
+  .label-100x75 {
+    width: 100mm;
+    height: 75mm;
+    padding: 5mm;
+    border: 1px solid #000;
+    margin-bottom: 5mm;
+    page-break-after: always;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    background: white;
+  }
+  
+  .label-100x150 {
+    width: 100mm;
+    height: 150mm;
+    padding: 8mm;
+    border: 1px solid #000;
+    margin-bottom: 5mm;
+    page-break-after: always;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    background: white;
+  }
+}

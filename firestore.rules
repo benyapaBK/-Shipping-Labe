@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: shipping_labels
+    // Document ID: auto-generated
+    // Fields:
+    //   - recipientName: string (required)
+    //   - phone: string (required)
+    //   - address: string (required)
+    //   - zipCode: string (required)
+    //   - items: list (optional)
+    //   - labelSize: string (required)
+    //   - userId: string (required, matches auth.uid)
+    //   - createdAt: timestamp (required)
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidShippingLabel(data) {
+      return data.recipientName is string && data.recipientName.size() > 0 && data.recipientName.size() < 200 &&
+             data.phone is string && data.phone.size() >= 9 && data.phone.size() <= 15 &&
+             data.address is string && data.address.size() > 0 && data.address.size() < 1000 &&
+             data.zipCode is string && data.zipCode.size() == 5 &&
+             data.userId == request.auth.uid &&
+             data.labelSize in ['100x75', '100x150'];
+    }
+
+    match /shipping_labels/{labelId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && isValidShippingLabel(request.resource.data);
+      allow update: if false; // Labels are history, usually not updated
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+    
+    match /test/connection {
+      allow read: if true;
+    }
+  }
+}
