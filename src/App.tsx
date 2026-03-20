@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { useDropzone } from 'react-dropzone';
@@ -556,65 +557,157 @@ export default function App() {
     }
   };
 
-  const exportPDF = (singleRecipient?: Recipient) => {
-    const toProcess = singleRecipient 
-      ? [singleRecipient]
-      : queue.filter(q => q.isValid && (selectedQueueIds.size === 0 || selectedQueueIds.has(q.id)));
-      
+  const exportPDF = async () => {
+    const toProcess = queue.filter(q => q.isValid && (selectedQueueIds.size === 0 || selectedQueueIds.has(q.id)));
     if (toProcess.length === 0) return;
 
-    const doc = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: labelSize === '100x75' ? [100, 75] : [100, 150]
-    });
+    setIsProcessing(true);
+    try {
+      const printArea = document.getElementById('print-area');
+      if (!printArea) return;
 
-    toProcess.forEach((recipient, index) => {
-      if (index > 0) doc.addPage();
-      
-      const isSmall = labelSize === '100x75';
+      // Temporarily show print area for capture
+      printArea.classList.remove('hidden');
+      printArea.style.position = 'fixed';
+      printArea.style.top = '-9999px';
+      printArea.style.left = '0';
+      printArea.style.width = '100mm';
+      printArea.style.display = 'block';
 
-      if (shopName) {
-        if (isSmall) {
-          // Bottom right for 100x75
-          doc.setFontSize(6);
-          doc.setTextColor(150);
-          doc.text("SENDER", 90, 65, { align: 'right' });
-          doc.setFontSize(8);
-          doc.setTextColor(0);
-          doc.text(shopName, 90, 68, { align: 'right' });
-        } else {
-          // Top for 100x150
-          doc.setFontSize(8);
-          doc.setTextColor(150);
-          doc.text(`SENDER: ${shopName}`, 10, 8);
-          doc.setTextColor(0);
-        }
-      }
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: labelSize === '100x75' ? [100, 75] : [100, 150]
+      });
 
-      doc.setFontSize(14);
-      doc.text(recipient.name, 10, 15);
-      doc.setFontSize(10);
-      doc.text(`TEL: ${recipient.phone}`, 10, 22);
-      
-      doc.setFontSize(11);
-      const splitAddress = doc.splitTextToSize(recipient.address, 80);
-      doc.text(splitAddress, 10, 30);
-      
-      doc.setFontSize(18);
-      doc.text(recipient.zipCode, 10, 65);
-      
-      if (labelSize === '100x150') {
-        doc.line(10, 75, 90, 75);
-        doc.setFontSize(10);
-        doc.text("Order Details:", 10, 82);
-        recipient.items.forEach((item, i) => {
-          doc.text(`${item.name} x${item.quantity}`, 10, 90 + (i * 5));
+      const labels = printArea.children;
+      for (let i = 0; i < labels.length; i++) {
+        const label = labels[i] as HTMLElement;
+        const canvas = await html2canvas(label, {
+          scale: 3, // Higher resolution
+          useCORS: true,
+          logging: false,
+          backgroundColor: '#ffffff'
         });
-      }
-    });
 
-    doc.save(`shipping-labels-${Date.now()}.pdf`);
+        const imgData = canvas.toDataURL('image/png');
+        if (i > 0) doc.addPage();
+        
+        const pdfWidth = doc.internal.pageSize.getWidth();
+        const pdfHeight = doc.internal.pageSize.getHeight();
+        doc.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      }
+
+      doc.save(`ShipLux_Labels_${new Date().getTime()}.pdf`);
+      
+      // Restore print area
+      printArea.classList.add('hidden');
+      printArea.style.position = '';
+      printArea.style.top = '';
+      printArea.style.left = '';
+      printArea.style.width = '';
+      printArea.style.display = '';
+    } catch (err) {
+      console.error("PDF Export Error:", err);
+      setError("เกิดข้อผิดพลาดในการสร้าง PDF");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const exportSinglePDF = async (recipient: Recipient) => {
+    setIsProcessing(true);
+    try {
+      // Create a temporary container for the single label
+      const tempDiv = document.createElement('div');
+      tempDiv.style.position = 'fixed';
+      tempDiv.style.top = '-9999px';
+      tempDiv.style.left = '0';
+      tempDiv.style.width = '100mm';
+      document.body.appendChild(tempDiv);
+
+      // We need to render the label exactly as it appears in print
+      const labelHtml = `
+        <div class="${labelSize === '100x75' ? 'label-100x75 relative' : 'label-100x150'}" style="width: 100mm; height: ${labelSize === '100x75' ? '75mm' : '150mm'}; background: white; padding: 5mm; border: 1px solid black; box-sizing: border-box; display: flex; flex-direction: column; font-family: sans-serif;">
+          ${shopName && labelSize === '100x150' ? `
+            <div style="margin-bottom: 1mm; padding-bottom: 1mm; border-bottom: 1px solid #ccc; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <p style="font-size: 7px; font-weight: bold; text-transform: uppercase; margin: 0;">Sender / ผู้ส่ง</p>
+                <p style="font-size: 10px; font-weight: bold; margin: 0;">${shopName}</p>
+              </div>
+            </div>
+          ` : ''}
+          <div style="border-bottom: 2px solid black; display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: ${labelSize === '100x75' ? '1mm' : '2mm'}; margin-bottom: ${labelSize === '100x75' ? '1mm' : '2mm'};">
+            <div>
+              <p style="font-size: 9px; font-weight: bold; text-transform: uppercase; margin: 0;">Recipient / ผู้รับ</p>
+              <h3 style="font-size: 18px; font-weight: bold; margin: 0; line-height: 1.2;">${recipient.name}</h3>
+            </div>
+            <div style="text-align: right;">
+              <p style="font-size: 9px; font-weight: bold; text-transform: uppercase; margin: 0;">TEL / โทร</p>
+              <p style="font-size: 16px; font-weight: bold; margin: 0;">${recipient.phone}</p>
+            </div>
+          </div>
+          <div style="flex-grow: 1;">
+            <p style="font-size: 9px; font-weight: bold; text-transform: uppercase; margin: 0; margin-bottom: 1mm;">Address / ที่อยู่</p>
+            <p style="font-size: ${labelSize === '100x75' ? '12px' : '13px'}; line-height: 1.5; margin: 0;">${recipient.address}</p>
+            <p style="font-size: 24px; font-weight: 900; letter-spacing: 2px; margin: 0; margin-top: ${labelSize === '100x75' ? '2mm' : '3mm'};">${recipient.zipCode}</p>
+          </div>
+          ${labelSize === '100x150' ? `
+            <div style="margin-top: 3mm; padding-top: 3mm; border-top: 2px dashed #ccc;">
+              <p style="font-size: 9px; font-weight: bold; text-transform: uppercase; margin: 0; margin-bottom: 2mm;">Order Details</p>
+              <div style="display: flex; flex-direction: column; gap: 1mm;">
+                ${recipient.items.map(item => `
+                  <div style="display: flex; justify-content: space-between; font-size: 11px;">
+                    <span>${item.name}</span>
+                    <span style="font-weight: bold;">x${item.quantity}</span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          ` : ''}
+          <div style="margin-top: auto; display: flex; justify-content: space-between; align-items: flex-end; padding-top: ${labelSize === '100x75' ? '1mm' : '2mm'};">
+            <div style="width: ${labelSize === '100x75' ? '12mm' : '16mm'}; height: ${labelSize === '100x75' ? '12mm' : '16mm'}; background: #f3f4f6; border: 1px solid black; display: flex; align-items: center; justify-content: center;">
+              <span style="font-size: 8px;">QR CODE</span>
+            </div>
+            <div style="text-align: right;">
+              ${shopName && labelSize === '100x75' ? `
+                <div style="margin-bottom: 0.5mm;">
+                  <p style="font-size: 6px; font-weight: bold; text-transform: uppercase; margin: 0;">Sender</p>
+                  <p style="font-size: 9px; font-weight: bold; margin: 0; line-height: 1;">${shopName}</p>
+                </div>
+              ` : ''}
+              <p style="font-size: 8px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; margin: 0;">ShipLux Premium v1.0</p>
+            </div>
+          </div>
+        </div>
+      `;
+
+      tempDiv.innerHTML = labelHtml;
+
+      const canvas = await html2canvas(tempDiv.firstElementChild as HTMLElement, {
+        scale: 3,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff'
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: labelSize === '100x75' ? [100, 75] : [100, 150]
+      });
+
+      doc.addImage(imgData, 'PNG', 0, 0, doc.internal.pageSize.getWidth(), doc.internal.pageSize.getHeight());
+      doc.save(`ShipLux_Label_${recipient.name.replace(/\s+/g, '_')}.pdf`);
+
+      document.body.removeChild(tempDiv);
+    } catch (err) {
+      console.error("Single PDF Export Error:", err);
+      setError("เกิดข้อผิดพลาดในการสร้าง PDF");
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const exportJSON = () => {
@@ -829,21 +922,32 @@ export default function App() {
             </div>
           </Card>
 
-          <Button 
-            size="lg" 
-            className="w-full py-6 text-xl shadow-lg shadow-emerald-200" 
-            onClick={generateLabels}
-            disabled={isProcessing || queue.length === 0}
-          >
-            {isProcessing ? (
-              <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-            ) : (
-              <>
-                <Printer size={24} />
-                สร้าง Shipping Label ({selectedQueueIds.size > 0 ? selectedQueueIds.size : queue.length})
-              </>
-            )}
-          </Button>
+          <div className="flex gap-3">
+            <Button 
+              size="lg" 
+              className="flex-1 py-6 text-xl shadow-lg shadow-emerald-200" 
+              onClick={generateLabels}
+              disabled={isProcessing || queue.length === 0}
+            >
+              {isProcessing ? (
+                <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <>
+                  <Printer size={24} />
+                  พิมพ์ Label ({selectedQueueIds.size > 0 ? selectedQueueIds.size : queue.length})
+                </>
+              )}
+            </Button>
+            <Button 
+              size="lg" 
+              variant="secondary"
+              className="px-6 py-6 shadow-lg" 
+              onClick={exportPDF}
+              disabled={isProcessing || queue.length === 0}
+            >
+              <FileDown size={24} />
+            </Button>
+          </div>
         </div>
 
         {/* Right Panel: Preview & Queue */}
@@ -924,38 +1028,25 @@ export default function App() {
                   <Card className="md:col-span-1 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900/50 border-dashed border-2 border-slate-200 dark:border-white/10">
                     <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 mb-6 uppercase tracking-[0.3em]">Live Preview</p>
                     {queue.length > 0 ? (
-                      <div className="flex flex-col items-center">
-                        <motion.div
-                          initial={{ opacity: 0, scale: 0.95 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          transition={{ duration: 0.4 }}
-                        >
-                          <LabelPreview recipient={queue[0]} size={labelSize} shopName={shopName} />
-                        </motion.div>
-                        <div className="mt-6 flex gap-3">
-                          <Button 
-                            variant="secondary" 
-                            size="sm" 
-                            className="rounded-xl px-6"
-                            onClick={() => exportPDF(queue[0])}
-                          >
-                            <FileDown size={16} className="mr-2" />
-                            Export PDF (เฉพาะใบนี้)
-                          </Button>
-                          <Button 
-                            variant="primary" 
-                            size="sm" 
-                            className="rounded-xl px-6"
-                            onClick={() => {
-                              setSelectedQueueIds(new Set([queue[0].id]));
-                              setTimeout(() => window.print(), 100);
-                            }}
-                          >
-                            <Printer size={16} className="mr-2" />
-                            พิมพ์ใบนี้
-                          </Button>
-                        </div>
-                      </div>
+                    <div className="flex flex-col items-center gap-4">
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.4 }}
+                      >
+                        <LabelPreview recipient={queue[0]} size={labelSize} shopName={shopName} />
+                      </motion.div>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="rounded-xl gap-2"
+                        onClick={() => exportSinglePDF(queue[0])}
+                        disabled={isProcessing}
+                      >
+                        <FileDown size={14} />
+                        Export PDF (หน้านี้)
+                      </Button>
+                    </div>
                     ) : (
                       <div className="text-center p-12">
                         <div className="w-20 h-20 bg-slate-100 rounded-3xl flex items-center justify-center text-slate-200 mx-auto mb-6">
@@ -979,9 +1070,9 @@ export default function App() {
                         ล้างคิวทั้งหมด
                       </Button>
                       <div className="h-px bg-slate-100 dark:bg-white/10 my-2"></div>
-                      <Button variant="secondary" size="sm" className="w-full justify-start rounded-xl" onClick={() => exportPDF()}>
+                      <Button variant="secondary" size="sm" className="w-full justify-start rounded-xl" onClick={exportPDF}>
                         <FileDown size={16} className="text-indigo-500 dark:text-amber-400" />
-                        Export PDF (รายการที่เลือก)
+                        Export PDF
                       </Button>
                       <Button variant="secondary" size="sm" className="w-full justify-start rounded-xl" onClick={exportJSON}>
                         <Download size={16} className="text-indigo-500 dark:text-amber-400" />
@@ -997,19 +1088,9 @@ export default function App() {
                     <h3 className="font-extrabold text-slate-900 dark:text-white">รายการในคิว</h3>
                     <div className="flex gap-3">
                       {selectedQueueIds.size > 0 && (
-                        <>
-                          <Button variant="secondary" size="sm" onClick={() => exportPDF()} className="rounded-xl">
-                            <FileDown size={16} className="mr-2" />
-                            Export PDF ({selectedQueueIds.size})
-                          </Button>
-                          <Button variant="primary" size="sm" onClick={() => window.print()} className="rounded-xl">
-                            <Printer size={16} className="mr-2" />
-                            Print ({selectedQueueIds.size})
-                          </Button>
-                          <Button variant="danger" size="sm" onClick={deleteSelectedQueue} className="rounded-xl">
-                            ลบที่เลือก ({selectedQueueIds.size})
-                          </Button>
-                        </>
+                        <Button variant="danger" size="sm" onClick={deleteSelectedQueue} className="rounded-xl">
+                          ลบที่เลือก ({selectedQueueIds.size})
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -1252,9 +1333,9 @@ export default function App() {
       {/* Print Area (Hidden in UI) */}
       <div id="print-area" className="hidden">
         {queue.filter(q => q.isValid && (selectedQueueIds.size === 0 || selectedQueueIds.has(q.id))).map(q => (
-          <div key={q.id} className={labelSize === '100x75' ? 'label-100x75 relative' : 'label-100x150'}>
+          <div key={q.id} className={labelSize === '100x75' ? 'label-100x75 relative' : 'label-100x150'} style={{ backgroundColor: 'white', color: 'black' }}>
             {shopName && labelSize === '100x150' && (
-              <div className="mb-1 pb-1 border-b border-gray-300 flex justify-between items-center">
+              <div className="mb-1 pb-1 border-b flex justify-between items-center" style={{ borderColor: '#D1D5DB' }}>
                 <div>
                   <p className="text-[7px] font-bold uppercase">Sender / ผู้ส่ง</p>
                   <p className="text-[10px] font-bold">{shopName}</p>
@@ -1294,7 +1375,7 @@ export default function App() {
             </div>
 
             {labelSize === '100x150' && (
-              <div className="mt-3 pt-3 border-t-2 border-dashed border-gray-400">
+              <div className="mt-3 pt-3 border-t-2 border-dashed" style={{ borderColor: '#9CA3AF' }}>
                 <p className="text-[9px] font-bold uppercase mb-2">Order Details</p>
                 <div className="space-y-1">
                   {q.items.map((item, idx) => (
@@ -1312,9 +1393,9 @@ export default function App() {
               labelSize === '100x75' ? "pt-1" : "pt-2"
             )}>
               <div className={cn(
-                "bg-gray-100 border border-black flex items-center justify-center",
+                "border border-black flex items-center justify-center",
                 labelSize === '100x75' ? "w-12 h-12" : "w-16 h-16"
-              )}>
+              )} style={{ backgroundColor: '#F3F4F6' }}>
                 <span className="text-[8px]">QR CODE</span>
               </div>
               <div className="text-right">
